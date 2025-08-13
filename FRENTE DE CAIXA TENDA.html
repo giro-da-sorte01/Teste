@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tenda JL - Frente de Caixa</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .section {
+            border: 1px solid #ccc;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        select, input {
+            padding: 8px;
+            margin: 5px;
+        }
+        #receiptPreview {
+            width: 300px;
+            border: 1px solid #000;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tenda JL - Frente de Caixa</h1>
+
+        <!-- Seção de Cadastro de Produtos -->
+        <div class="section">
+            <h2>Cadastro de Produtos</h2>
+            <h3>Adicionar Novo Produto</h3>
+            <input type="text" id="productDescription" placeholder="Descrição do Produto">
+            <input type="text" id="productCode" placeholder="Código do Produto">
+            <input type="number" id="productPrice" placeholder="Valor de Venda" step="0.01">
+            <input type="number" id="productStock" placeholder="Estoque Inicial">
+            <button onclick="addProduct()">Adicionar Produto</button>
+
+            <h3>Adicionar Estoque a Produto Existente</h3>
+            <select id="stockProduct">
+                <option value="">Selecione um Produto</option>
+            </select>
+            <input type="number" id="stockQuantity" placeholder="Quantidade a Adicionar" min="1">
+            <button onclick="addStockToProduct()">Adicionar Estoque</button>
+
+            <table id="productTable">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Descrição</th>
+                        <th>Valor</th>
+                        <th>Estoque</th>
+                    </tr>
+                </thead>
+                <tbody id="productTableBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Seção de Cadastro de Clientes -->
+        <div class="section">
+            <h2>Cadastro de Clientes</h2>
+            <input type="text" id="clientName" placeholder="Nome do Cliente">
+            <button onclick="addClient()">Adicionar Cliente</button>
+            <table id="clientTable">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                    </tr>
+                </thead>
+                <tbody id="clientTableBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Seção de Venda -->
+        <div class="section">
+            <h2>Realizar Venda</h2>
+            <select id="saleClient">
+                <option value="">Selecione um Cliente</option>
+            </select>
+            <select id="saleProduct">
+                <option value="">Selecione um Produto</option>
+            </select>
+            <input type="number" id="saleQuantity" placeholder="Quantidade" min="1">
+            <input type="number" id="saleDiscount" placeholder="Desconto (R$)" step="0.01" min="0">
+            <input type="number" id="saleSurcharge" placeholder="Acréscimo (R$)" step="0.01" min="0">
+            <select id="paymentMethod">
+                <option value="Dinheiro">Dinheiro</option>
+                <option value="Cartão de Crédito">Cartão de Crédito</option>
+                <option value="Cartão de Débito">Cartão de Débito</option>
+                <option value="Pix">Pix</option>
+            </select>
+            <button onclick="addItemToSale()">Adicionar Item ao Carrinho</button>
+            <button onclick="finalizeSale()">Finalizar Venda</button>
+            <table id="saleTable">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Descrição</th>
+                        <th>Quantidade</th>
+                        <th>Valor Unitário</th>
+                        <th>Desconto</th>
+                        <th>Acréscimo</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="saleTableBody"></tbody>
+            </table>
+            <div id="saleTotal">Total: R$ 0,00</div>
+        </div>
+
+        <!-- Visualização do Comprovante -->
+        <div class="section">
+            <h2>Comprovante</h2>
+            <div id="receiptPreview"></div>
+            <button onclick="saveReceiptAsPDF()">Salvar Comprovante como PDF</button>
+        </div>
+    </div>
+
+    <script>
+        // Inicialização dos dados
+        let products = JSON.parse(localStorage.getItem('products')) || [];
+        let clients = JSON.parse(localStorage.getItem('clients')) || [];
+        let currentSale = { client: '', items: [], paymentMethod: '', date: '' };
+
+        // Função para formatar valores em reais
+        function formatCurrency(value) {
+            return `R$ ${value.toFixed(2).replace('.', ',')}`;
+        }
+
+        // Função para atualizar tabelas e seletores
+        function updateTablesAndSelects() {
+            // Atualizar tabela de produtos
+            const productTableBody = document.getElementById('productTableBody');
+            productTableBody.innerHTML = '';
+            products.forEach(product => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${product.code}</td>
+                    <td>${product.description}</td>
+                    <td>${formatCurrency(product.price)}</td>
+                    <td>${product.stock}</td>
+                `;
+                productTableBody.appendChild(row);
+            });
+
+            // Atualizar tabela de clientes
+            const clientTableBody = document.getElementById('clientTableBody');
+            clientTableBody.innerHTML = '';
+            clients.forEach(client => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td>${client.name}</td>`;
+                clientTableBody.appendChild(row);
+            });
+
+            // Atualizar seletores de venda
+            const saleClient = document.getElementById('saleClient');
+            saleClient.innerHTML = '<option value="">Selecione um Cliente</option>';
+            clients.forEach(client => {
+                const option = document.createElement('option');
+                option.value = client.name;
+                option.textContent = client.name;
+                saleClient.appendChild(option);
+            });
+
+            // Atualizar seletor de produtos na venda
+            const saleProduct = document.getElementById('saleProduct');
+            saleProduct.innerHTML = '<option value="">Selecione um Produto</option>';
+            products.forEach(product => {
+                const option = document.createElement('option');
+                option.value = product.code;
+                option.textContent = `${product.description} (${formatCurrency(product.price)})`;
+                saleProduct.appendChild(option);
+            });
+
+            // Atualizar seletor de produtos para adição de estoque
+            const stockProduct = document.getElementById('stockProduct');
+            stockProduct.innerHTML = '<option value="">Selecione um Produto</option>';
+            products.forEach(product => {
+                const option = document.createElement('option');
+                option.value = product.code;
+                option.textContent = `${product.description} (Estoque: ${product.stock})`;
+                stockProduct.appendChild(option);
+            });
+        }
+
+        // Função para adicionar produto
+        function addProduct() {
+            const description = document.getElementById('productDescription').value;
+            const code = document.getElementById('productCode').value;
+            const price = parseFloat(document.getElementById('productPrice').value);
+            const stock = parseInt(document.getElementById('productStock').value);
+
+            if (description && code && price > 0 && stock >= 0) {
+                products.push({ description, code, price, stock });
+                localStorage.setItem('products', JSON.stringify(products));
+                updateTablesAndSelects();
+                document.getElementById('productDescription').value = '';
+                document.getElementById('productCode').value = '';
+                document.getElementById('productPrice').value = '';
+                document.getElementById('productStock').value = '';
+                console.log('Produto adicionado:', { description, code, price, stock });
+            } else {
+                alert('Preencha todos os campos do produto corretamente.');
+            }
+        }
+
+        // Função para adicionar estoque a produto existente
+        function addStockToProduct() {
+            const productCode = document.getElementById('stockProduct').value;
+            const quantity = parseInt(document.getElementById('stockQuantity').value) || 0;
+            const product = products.find(p => p.code === productCode);
+
+            if (product && quantity > 0) {
+                product.stock += quantity;
+                localStorage.setItem('products', JSON.stringify(products));
+                updateTablesAndSelects();
+                document.getElementById('stockProduct').value = '';
+                document.getElementById('stockQuantity').value = '';
+                console.log('Estoque adicionado:', { productCode, quantity, newStock: product.stock });
+            } else {
+                alert('Selecione um produto válido e insira uma quantidade maior que zero.');
+            }
+        }
+
+        // Função para adicionar cliente
+        function addClient() {
+            const name = document.getElementById('clientName').value;
+            if (name) {
+                clients.push({ name });
+                localStorage.setItem('clients', JSON.stringify(clients));
+                updateTablesAndSelects();
+                document.getElementById('clientName').value = '';
+                console.log('Cliente adicionado:', { name });
+            } else {
+                alert('Preencha o nome do cliente.');
+            }
+        }
+
+        // Função para adicionar item ao carrinho
+        function addItemToSale() {
+            const productCode = document.getElementById('saleProduct').value;
+            const quantity = parseInt(document.getElementById('saleQuantity').value) || 0;
+            const discount = parseFloat(document.getElementById('saleDiscount').value) || 0;
+            const surcharge = parseFloat(document.getElementById('saleSurcharge').value) || 0;
+            const product = products.find(p => p.code === productCode);
+
+            console.log('Adicionando item ao carrinho:', { productCode, quantity, discount, surcharge, product });
+
+            if (product && quantity > 0 && quantity <= product.stock && discount >= 0 && surcharge >= 0) {
+                const existingItem = currentSale.items.find(item => item.code === productCode);
+                if (existingItem) {
+                    existingItem.quantity += quantity;
+                    existingItem.discount += discount;
+                    existingItem.surcharge += surcharge;
+                    existingItem.total = (existingItem.quantity * existingItem.price) - existingItem.discount + existingItem.surcharge;
+                } else {
+                    currentSale.items.push({
+                        code: product.code,
+                        description: product.description,
+                        quantity,
+                        price: product.price,
+                        discount,
+                        surcharge,
+                        total: (quantity * product.price) - discount + surcharge
+                    });
+                }
+                product.stock -= quantity;
+                localStorage.setItem('products', JSON.stringify(products));
+                console.log('Itens no carrinho:', currentSale.items);
+                updateSaleTable();
+                updateTablesAndSelects();
+                document.getElementById('saleQuantity').value = '';
+                document.getElementById('saleDiscount').value = '';
+                document.getElementById('saleSurcharge').value = '';
+            } else {
+                alert('Selecione um produto válido, quantidade disponível e valores de desconto/acréscimo válidos.');
+            }
+        }
+
+        // Função para atualizar tabela de venda
+        function updateSaleTable() {
+            const saleTableBody = document.getElementById('saleTableBody');
+            saleTableBody.innerHTML = '';
+            let total = 0;
+            currentSale.items.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.code}</td>
+                    <td>${item.description}</td>
+                    <td>${item.quantity}</td>
+                    <td>${formatCurrency(item.price)}</td>
+                    <td>${formatCurrency(item.discount)}</td>
+                    <td>${formatCurrency(item.surcharge)}</td>
+                    <td>${formatCurrency(item.total)}</td>
+                `;
+                saleTableBody.appendChild(row);
+                total += item.total;
+            });
+            document.getElementById('saleTotal').textContent = `Total: ${formatCurrency(total)}`;
+            console.log('Tabela de venda atualizada. Total:', total);
+        }
+
+        // Função para finalizar venda
+        function finalizeSale() {
+            const client = document.getElementById('saleClient').value;
+            const paymentMethod = document.getElementById('paymentMethod').value;
+
+            console.log('Finalizando venda:', { client, paymentMethod, items: currentSale.items });
+
+            if (!client) {
+                alert('Selecione um cliente para finalizar a venda.');
+                return;
+            }
+            if (currentSale.items.length === 0) {
+                alert('Adicione pelo menos um item ao carrinho para finalizar a venda.');
+                return;
+            }
+
+            currentSale.client = client;
+            currentSale.paymentMethod = paymentMethod;
+            currentSale.date = new Date().toLocaleString('pt-BR');
+            generateReceipt();
+            console.log('Venda finalizada. Dados:', currentSale);
+        }
+
+        // Função para gerar comprovante
+        function generateReceipt() {
+            const receiptPreview = document.getElementById('receiptPreview');
+            let receiptText = `TENDA JL\n`;
+            receiptText += `Agradecemos a preferência\n`;
+            receiptText += `${currentSale.date}\n`;
+            receiptText += `Cliente: ${currentSale.client}\n`;
+            receiptText += `--------------------------------\n`;
+            receiptText += `Itens Vendidos:\n`;
+            let total = 0;
+            currentSale.items.forEach(item => {
+                receiptText += `${item.description} (${item.quantity}x ${formatCurrency(item.price)})\n`;
+                if (item.discount > 0) {
+                    receiptText += `Desconto: ${formatCurrency(item.discount)}\n`;
+                }
+                if (item.surcharge > 0) {
+                    receiptText += `Acréscimo: ${formatCurrency(item.surcharge)}\n`;
+                }
+                receiptText += `Total: ${formatCurrency(item.total)}\n`;
+                total += item.total;
+            });
+            receiptText += `--------------------------------\n`;
+            receiptText += `Total Geral: ${formatCurrency(total)}\n`;
+            receiptText += `Forma de Pagamento: ${currentSale.paymentMethod}\n`;
+            receiptPreview.textContent = receiptText;
+            console.log('Comprovante gerado:', receiptText);
+        }
+
+        // Função para salvar comprovante como PDF
+        function saveReceiptAsPDF() {
+            console.log('Tentando salvar PDF. Estado de currentSale:', currentSale);
+
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                alert('Erro: A biblioteca jsPDF não foi carregada. Verifique sua conexão com a internet.');
+                return;
+            }
+
+            if (!currentSale.client || !currentSale.date || currentSale.items.length === 0) {
+                alert('Nenhum comprovante disponível. Finalize uma venda primeiro.');
+                return;
+            }
+
+            try {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: [80, 150 + currentSale.items.length * 15]
+                });
+                doc.setFont('Courier');
+                doc.setFontSize(10);
+                let y = 10;
+                doc.text('TENDA JL', 40, y, { align: 'center' });
+                y += 5;
+                doc.text('Agradecemos a preferência', 40, y, { align: 'center' });
+                y += 5;
+                doc.text(currentSale.date, 40, y, { align: 'center' });
+                y += 5;
+                doc.text(`Cliente: ${currentSale.client}`, 5, y);
+                y += 5;
+                doc.text('--------------------------------', 5, y);
+                y += 5;
+                doc.text('Itens Vendidos:', 5, y);
+                y += 5;
+                currentSale.items.forEach(item => {
+                    doc.text(`${item.description} (${item.quantity}x ${formatCurrency(item.price)})`, 5, y);
+                    y += 5;
+                    if (item.discount > 0) {
+                        doc.text(`Desconto: ${formatCurrency(item.discount)}`, 5, y);
+                        y += 5;
+                    }
+                    if (item.surcharge > 0) {
+                        doc.text(`Acréscimo: ${formatCurrency(item.surcharge)}`, 5, y);
+                        y += 5;
+                    }
+                    doc.text(`Total: ${formatCurrency(item.total)}`, 5, y);
+                    y += 5;
+                });
+                doc.text('--------------------------------', 5, y);
+                y += 5;
+                const total = currentSale.items.reduce((sum, item) => sum + item.total, 0);
+                doc.text(`Total Geral: ${formatCurrency(total)}`, 5, y);
+                y += 5;
+                doc.text(`Forma de Pagamento: ${currentSale.paymentMethod}`, 5, y);
+                doc.save(`Comprovante_TendaJL_${currentSale.date.replace(/[/, :]/g, '-')}.pdf`);
+                console.log('PDF salvo com sucesso.');
+                // Resetar currentSale após salvar o PDF
+                currentSale = { client: '', items: [], paymentMethod: '', date: '' };
+                updateSaleTable();
+            } catch (error) {
+                console.error('Erro ao gerar PDF:', error);
+                alert('Erro ao gerar o comprovante. Verifique o console do navegador para detalhes.');
+            }
+        }
+
+        // Inicializar tabelas e seletores na carga da página
+        updateTablesAndSelects();
+    </script>
+</body>
+</html>
